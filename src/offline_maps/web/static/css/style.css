@@ -1,0 +1,133 @@
+html,
+body {
+    margin: 0;
+    height: 100%;
+}
+
+#map {
+    position: absolute;
+    inset: 0;
+}
+
+.maplibregl-popup-content {
+    font: 12px/1.4 system-ui, sans-serif;
+    padding: 8px 10px;
+}
+
+.props {
+    border-collapse: collapse;
+}
+
+.props td {
+    padding: 1px 6px 1px 0;
+    vertical-align: top;
+}
+
+.props td.k {
+    color: #6a6a6a;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.pp {
+    min-width: 210px;
+    max-width: 260px;
+}
+
+.pp-photo {
+    display: block;
+    width: 100%;
+    max-height: 150px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    cursor: zoom-in;
+}
+
+.pp-field {
+    margin: 3px 0;
+}
+
+.pp-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6a6a6a;
+}
+
+.pp-value {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.pp-prov {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #6a6a6a;
+}
+
+.pp-tags {
+    margin-top: 4px;
+}
+
+.pp-tags summary {
+    cursor: pointer;
+    font-size: 11px;
+    color: #4a7fb5;
+}
+
+.pp-foot {
+    margin-top: 8px;
+}
+
+.pp-osm {
+    font-size: 11px;
+    color: #6a6a6a;
+    word-break: break-all;
+    user-select: all;
+}
+
+.lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.85);
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+}
+
+.lightbox.open {
+    display: flex;
+}
+
+.lightbox-img {
+    max-width: 94vw;
+    max-height: 94vh;
+    border-radius: 4px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+    cursor: default;
+}
+
+.lightbox-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 22px;
+    line-height: 36px;
+    text-align: center;
+    cursor: pointer;
+}
+
+.lightbox-close:hover {
+    background: rgba(0, 0, 0, 0.8);
+}

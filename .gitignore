@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local config
+config.yaml
+.env
+
+# Vendored basemap data — large, fetched via scripts/ (see README)
+/data/*.pmtiles
+
+# Point-of-interest datasets
+/data/*.parquet
+
+# sync_osm checkpoint (transient)
+/data/*.partial.jsonl
+
+# Locally cached photos + thumbnails (offline-maps-sync-photos)
+/data/photos/
+
+# macOS
+.DS_Store

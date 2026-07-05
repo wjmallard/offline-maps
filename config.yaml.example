@@ -1,0 +1,41 @@
+# Offline Maps configuration
+# Copy to config.yaml and adjust for your machine.
+
+map:
+  center: [-98.5795, 39.8283]   # [lon, lat] — placeholder (center of the contiguous US)
+  default_zoom: 4
+
+tiles:
+  file: data/basemap.pmtiles    # vendored basemap archive (git-ignored); served at /tiles/basemap.pmtiles
+
+points:
+  file: data/points.parquet     # GeoParquet source of truth (git-ignored); any CRS, reprojected to WGS84
+  max_features: 5000            # cap on points returned per viewport query
+
+sync:
+  # ALPR point source. DeFlock regenerates a worldwide set of static JSON region
+  # tiles hourly from OpenStreetMap and serves them from its CDN; `offline-maps-sync`
+  # mirrors those tiles into the points file above. OSM data is ODbL.
+  regions_url: https://cdn.deflock.me/regions
+
+  # Optional enrichment sidecar. `offline-maps-sync-osm` fetches full OSM tags and
+  # edit metadata (by node id, straight from Overpass) for the points above and
+  # writes them to a separate GeoParquet. The viewer ignores it unless wired in.
+  osm:
+    overpass_url: https://overpass-api.de/api/interpreter
+    batch_size: 1000                # node ids per Overpass request
+    output_path: data/points_meta.parquet
+
+  # Optional local photo cache. `offline-maps-sync-photos` downloads the images
+  # referenced by the enriched tags (Commons / Mapillary / Panoramax / image URLs)
+  # into `dir`, so the viewer can serve them locally with no runtime network calls.
+  # Mapillary needs a free token in .env as MAPILLARY_TOKEN (see .env.example).
+  photos:
+    dir: data/photos              # full-resolution cached images (thumbnails go in <dir>/thumbs)
+    max_width: 1024               # download width for resizable sources (Commons/Mapillary/Panoramax)
+    thumb_width: 512              # downscaled thumbnail width used in map popups
+
+server:
+  host: 127.0.0.1
+  port: 5000
+  debug: true

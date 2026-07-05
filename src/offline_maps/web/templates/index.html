@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Maps</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="map"></div>
+
+    <script src="/static/vendor/maplibre-gl.js"></script>
+    <script src="/static/vendor/pmtiles.js"></script>
+    <script>
+        window.MAP_CONFIG = {
+            center: {{ center | tojson }},
+            zoom: {{ zoom | tojson }},
+            styleUrl: "/static/styles/basemap.json",
+        };
+    </script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
