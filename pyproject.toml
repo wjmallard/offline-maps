@@ -3,6 +3,7 @@ name = "offline-maps"
 version = "0.1.0"
 description = "Minimalist offline map viewer"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "flask>=3.0",
