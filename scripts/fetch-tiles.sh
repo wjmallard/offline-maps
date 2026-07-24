@@ -20,7 +20,7 @@ BBOX="-125,24,-66,50"   # contiguous US (W,S,E,N)
 MAXZOOM=13
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="${OUT:-$ROOT/data/tiles/basemap.pmtiles}"
+OUT="${OUT:-$ROOT/data/basemap.pmtiles}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
