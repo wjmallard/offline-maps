@@ -20,7 +20,8 @@ sync:
 
   # Optional enrichment sidecar. `offline-maps-sync-osm` fetches full OSM tags and
   # edit metadata (by node id, straight from Overpass) for the points above and
-  # writes them to a separate GeoParquet. The viewer ignores it unless wired in.
+  # writes them to a separate GeoParquet. When present, the viewer reads it lazily
+  # to fill point popups with the full tag table and edit provenance.
   osm:
     overpass_url: https://overpass-api.de/api/interpreter
     batch_size: 1000                # node ids per Overpass request
