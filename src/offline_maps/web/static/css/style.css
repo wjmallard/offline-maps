@@ -14,6 +14,34 @@ body {
     padding: 8px 10px;
 }
 
+.deck-picker {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1;
+    padding: 8px 12px;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+    font: 12px/1.7 system-ui, sans-serif;
+}
+
+.deck-picker label {
+    display: block;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.deck-picker input {
+    margin-right: 6px;
+}
+
+.deck-count {
+    margin-left: 6px;
+    font-size: 11px;
+    color: #6a6a6a;
+}
+
 .props {
     border-collapse: collapse;
 }
@@ -42,6 +70,13 @@ body {
     border-radius: 4px;
     margin-bottom: 8px;
     cursor: zoom-in;
+}
+
+.pp-title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 2px;
 }
 
 .pp-field {

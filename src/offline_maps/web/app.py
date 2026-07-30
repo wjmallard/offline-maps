@@ -80,16 +80,6 @@ def api_deck_points(deck_id):
     return _points_response(deck)
 
 
-@app.route("/api/points")
-def api_points():
-    # Deprecated alias for the first deck, kept while the frontend still fetches
-    # it; the deck selector replaces it.
-    all_decks = decks.list_decks()
-    if not all_decks:
-        return Response(_EMPTY_COLLECTION, mimetype="application/json")
-    return _points_response(all_decks[0])
-
-
 def _points_response(deck):
     bbox = request.args.get("bbox")
     if not bbox:

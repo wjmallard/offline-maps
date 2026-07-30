@@ -20,8 +20,61 @@
     );
     map.addControl(new maplibregl.ScaleControl());
 
+    let currentDeck = null;
+
     setupLightbox();
-    map.on("load", () => setupPoints(map));
+    map.on("load", () => setupDecks(map));
+
+    // List the decks, restore the last selection, and build the picker.
+    // An empty decks directory leaves a plain basemap.
+    async function setupDecks(map) {
+        let decks;
+        try {
+            decks = (await (await fetch("/api/decks")).json()).decks;
+        } catch (err) {
+            console.error("deck list failed", err);
+            return;
+        }
+        if (!decks.length) return;
+        const saved = localStorage.getItem("offline-maps.deck");
+        currentDeck = decks.some((d) => d.id === saved) ? saved : decks[0].id;
+        document.body.appendChild(deckPicker(map, decks));
+        setupPoints(map);
+    }
+
+    // One deck shows at a time, like swapping game cartridges: switching decks
+    // repoints the single GeoJSON source instead of stacking per-deck layers.
+    // Deck names are untrusted data — built as text nodes, never markup.
+    function deckPicker(map, decks) {
+        const picker = document.createElement("div");
+        picker.className = "deck-picker";
+        for (const deck of decks) {
+            const input = document.createElement("input");
+            input.type = "radio";
+            input.name = "deck";
+            input.value = deck.id;
+            input.checked = deck.id === currentDeck;
+            input.addEventListener("change", () => switchDeck(map, deck.id));
+            const label = document.createElement("label");
+            label.appendChild(input);
+            label.appendChild(document.createTextNode(deck.name));
+            if (deck.count != null) {
+                const count = document.createElement("span");
+                count.className = "deck-count";
+                count.textContent = deck.count.toLocaleString();
+                label.appendChild(count);
+            }
+            picker.appendChild(label);
+        }
+        return picker;
+    }
+
+    function switchDeck(map, deckId) {
+        currentDeck = deckId;
+        localStorage.setItem("offline-maps.deck", deckId);
+        map.getSource("points").setData(emptyCollection());
+        loadPointsInView(map);
+    }
 
     function setupPoints(map) {
         map.addSource("points", {
@@ -134,7 +187,7 @@
         const b = map.getBounds();
         const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
         try {
-            const resp = await fetch(`/api/points?bbox=${bbox}`);
+            const resp = await fetch(`/api/decks/${encodeURIComponent(currentDeck)}/points?bbox=${bbox}`);
             if (!resp.ok) return;
             const source = map.getSource("points");
             if (source) source.setData(await resp.json());
@@ -143,8 +196,19 @@
         }
     }
 
-    // Curated card built instantly from the point's own properties. Photos come from
-    // the local /photos route; onerror drops the <img> for nodes with no cached image.
+    // Keys whose presence marks a DeFlock-style surveillance point, which gets the
+    // curated card; every other deck gets a generic card of its own properties.
+    const SURVEILLANCE_KEYS = [
+        "brand",
+        "manufacturer",
+        "operator",
+        "surveillance:brand",
+        "surveillance:manufacturer",
+        "surveillance:operator",
+    ];
+
+    // Card built instantly from the point's own properties. Photos come from
+    // the local /thumbs route; onerror drops the <img> for points with no cached image.
     // Point properties are untrusted data: escape for HTML, URL-encode for URLs.
     function cardHtml(props) {
         const id = props.osm_id;
@@ -152,14 +216,25 @@
         const photo = id != null
             ? `<img class="pp-photo" src="/thumbs/${idUrl}" data-full="/photos/${idUrl}" alt="" onerror="this.remove()">`
             : "";
+        const title = props.name
+            ? `<div class="pp-title">${escapeHtml(props.name)}</div>`
+            : "";
         const rows = [];
-        const operator = operatorOf(props);
-        if (operator) rows.push(field("Operated by", operator));
-        rows.push(field("Made by", manufacturerOf(props)));
+        if (SURVEILLANCE_KEYS.some((key) => props[key] != null)) {
+            const operator = operatorOf(props);
+            if (operator) rows.push(field("Operated by", operator));
+            rows.push(field("Made by", manufacturerOf(props)));
+        } else {
+            for (const [key, value] of Object.entries(props)) {
+                if (key === "name" || key === "id" || key === "osm_id") continue;
+                if (value == null || value === "") continue;
+                rows.push(field(key, value));
+            }
+        }
         const osm = id != null
             ? `<div class="pp-osm">www.openstreetmap.org/node/${escapeHtml(id)}</div>`
             : "";
-        return `<div class="pp">${photo}<div class="pp-rows">${rows.join("")}</div>`
+        return `<div class="pp">${photo}${title}<div class="pp-rows">${rows.join("")}</div>`
             + `<div class="pp-details"></div><div class="pp-foot">${osm}</div></div>`;
     }
 
