@@ -8,24 +8,41 @@
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol("pmtiles", protocol.tile);
 
-    const map = new maplibregl.Map({
-        container: "map",
-        style: cfg.styleUrl,
-        center: cfg.center,
-        zoom: cfg.zoom,
-    });
-
-    map.addControl(
-        new maplibregl.NavigationControl(),
-        "top-right",
-    );
-    map.addControl(new maplibregl.ScaleControl());
-
     let currentDeck = null;
     let deckInfo = {};
 
     setupLightbox();
-    map.on("load", () => setupDecks(map));
+    init();
+
+    // MapLibre requires an absolute sprite URL, but the vendored style stays
+    // origin-agnostic — resolve it against wherever the app is served from.
+    async function init() {
+        let style;
+        try {
+            style = await (await fetch(cfg.styleUrl)).json();
+        } catch (err) {
+            console.error("style load failed", err);
+            return;
+        }
+        if (typeof style.sprite === "string" && style.sprite.startsWith("/")) {
+            style.sprite = location.origin + style.sprite;
+        }
+
+        const map = new maplibregl.Map({
+            container: "map",
+            style: style,
+            center: cfg.center,
+            zoom: cfg.zoom,
+        });
+
+        map.addControl(
+            new maplibregl.NavigationControl(),
+            "top-right",
+        );
+        map.addControl(new maplibregl.ScaleControl());
+
+        map.on("load", () => setupDecks(map));
+    }
 
     // List the decks, restore the last selection, and build the picker.
     // An empty decks directory leaves a plain basemap.
