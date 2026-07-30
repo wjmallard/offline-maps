@@ -21,6 +21,7 @@ offline-maps-pack = "offline_maps.pack:main"
 offline-maps-sync = "offline_maps.sync:main"
 offline-maps-sync-osm = "offline_maps.sync_osm:main"
 offline-maps-sync-photos = "offline_maps.sync_photos:main"
+offline-maps-verify = "offline_maps.verify:main"
 
 [build-system]
 requires = ["hatchling"]

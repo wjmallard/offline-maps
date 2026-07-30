@@ -42,6 +42,9 @@ _CSP = (
 @app.after_request
 def add_csp(resp):
     resp.headers["Content-Security-Policy"] = _CSP
+    # Deck images are served with a mimetype from their extension; nosniff
+    # stops the browser second-guessing a masquerading member into HTML.
+    resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
 
 # Point ids land in filesystem globs and zip member lookups, so only a
