@@ -102,7 +102,7 @@
                 .setHTML(cardHtml(props))
                 .addTo(map);
             if (props.osm_id == null) return;
-            fetch(`/api/point/${props.osm_id}`)
+            fetch(`/api/point/${encodeURIComponent(props.osm_id)}`)
                 .then((r) => (r.ok ? r.json() : null))
                 .then((meta) => {
                     if (!meta) return;
@@ -145,17 +145,19 @@
 
     // Curated card built instantly from the point's own properties. Photos come from
     // the local /photos route; onerror drops the <img> for nodes with no cached image.
+    // Point properties are untrusted data: escape for HTML, URL-encode for URLs.
     function cardHtml(props) {
         const id = props.osm_id;
+        const idUrl = id != null ? escapeHtml(encodeURIComponent(id)) : null;
         const photo = id != null
-            ? `<img class="pp-photo" src="/thumbs/${id}" data-full="/photos/${id}" alt="" onerror="this.remove()">`
+            ? `<img class="pp-photo" src="/thumbs/${idUrl}" data-full="/photos/${idUrl}" alt="" onerror="this.remove()">`
             : "";
         const rows = [];
         const operator = operatorOf(props);
         if (operator) rows.push(field("Operated by", operator));
         rows.push(field("Made by", manufacturerOf(props)));
         const osm = id != null
-            ? `<div class="pp-osm">www.openstreetmap.org/node/${id}</div>`
+            ? `<div class="pp-osm">www.openstreetmap.org/node/${escapeHtml(id)}</div>`
             : "";
         return `<div class="pp">${photo}<div class="pp-rows">${rows.join("")}</div>`
             + `<div class="pp-details"></div><div class="pp-foot">${osm}</div></div>`;
@@ -165,7 +167,7 @@
     function detailsHtml(meta) {
         const when = meta.osm_timestamp ? meta.osm_timestamp.slice(0, 10) : "?";
         const by = meta.user ? " by " + escapeHtml(meta.user) : "";
-        const prov = `<div class="pp-prov">Last edited ${escapeHtml(when)}${by} · v${meta.version}</div>`;
+        const prov = `<div class="pp-prov">Last edited ${escapeHtml(when)}${by} · v${escapeHtml(meta.version)}</div>`;
         const tags = meta.tags || {};
         const n = Object.keys(tags).length;
         const tagList = n
@@ -202,7 +204,7 @@
     }
 
     function escapeHtml(s) {
-        return s.replace(/[&<>"']/g, (c) => ({
+        return String(s).replace(/[&<>"']/g, (c) => ({
             "&": "&amp;",
             "<": "&lt;",
             ">": "&gt;",
