@@ -2,12 +2,15 @@
 
 A minimalist, fully offline map viewer: one Flask process serves a vendored
 [Protomaps](https://protomaps.com/) basemap rendered with
-[MapLibre GL JS](https://maplibre.org/), plus every automated license-plate
-reader (ALPR) known to OpenStreetMap as a clustered point layer, mirrored
-locally from [DeFlock](https://deflock.org). No tile server, no CDNs, no API
-keys — the browser makes **no network requests at runtime**. ("Offline" means
-no *remote* calls; local requests, including dynamically querying local
-data, are fine.)
+[MapLibre GL JS](https://maplibre.org/), plus swappable **waypoint decks** —
+single-file point sets you can trade like game cartridges: drop one into
+`data/decks/`, and it shows up in the viewer on the next page load. The
+reference deck mirrors every automated license-plate reader (ALPR) known to
+OpenStreetMap, via [DeFlock](https://deflock.org). No tile server, no CDNs, no
+API keys — the browser makes **no network requests at runtime**, and a strict
+same-origin Content-Security-Policy makes that hold by construction, whatever
+a deck contains. ("Offline" means no *remote* calls; local requests, including
+dynamically querying local data, are fine.)
 
 ![San Francisco in the viewer: clustered ALPR points over the Protomaps basemap, with a popup showing one camera's operator, manufacturer, and OSM provenance](docs/screenshot.png)
 
@@ -17,14 +20,20 @@ data, are fine.)
   dated Protomaps planet build. Flask serves it as a static file with HTTP
   range support, and [pmtiles.js](https://github.com/protomaps/PMTiles) reads
   tile slices out of it directly in the browser — no tile server.
-- **Points** — a GeoParquet loaded once into an in-memory GeoDataFrame with a
-  spatial index. The page fetches the current viewport's points as GeoJSON
-  (`/api/points?bbox=…`, capped at `points.max_features`) and clusters them
-  client-side.
-- **Popups** — clicking a point shows a DeFlock-style card (photo, operator,
-  manufacturer) built from the point's own columns, then lazily fills in edit
-  provenance and the full tag table from the enrichment sidecar
-  (`/api/point/<osm_id>`), when present.
+- **Decks** — each deck's points load once into an in-memory GeoDataFrame
+  with a spatial index (lazily, on first query, re-read when the file
+  changes). The page fetches the current viewport's points as GeoJSON
+  (`/api/decks/<id>/points?bbox=…`, capped at `decks.max_features`) and
+  clusters them client-side. One deck shows at a time — a radio picker swaps
+  the layer, like changing cartridges.
+- **Popups** — clicking a point shows a card built from the point's own
+  properties (a `name` becomes the title; decks with surveillance tags get
+  the DeFlock-style operator/manufacturer card), then lazily fills in the
+  deck's per-point detail record and photo, when the deck carries them.
+- **Offline by construction** — every response carries a same-origin CSP, so
+  the browser itself refuses any off-origin request; attempts are logged via
+  `/csp-report`. Deck data is escaped everywhere it renders, and ids are
+  validated before they touch a lookup.
 - **Vendored frontend** — MapLibre GL JS, pmtiles.js, the Protomaps style,
   sprites, and Noto Sans glyphs all live under `static/`; nothing is fetched
   from a CDN.
@@ -43,9 +52,57 @@ Requires Python ≥ 3.12, [uv](https://docs.astral.sh/uv/), and the
 cp config.yaml.example config.yaml   # set map.center / default_zoom to your area
 uv sync
 bash scripts/fetch-tiles.sh          # basemap — contiguous US, full detail, ~19 GB (see below)
-uv run offline-maps-sync             # points — mirror DeFlock's ALPR dataset (~3 MB)
+uv run offline-maps-sync             # the alpr deck — mirror DeFlock's dataset (~3 MB)
 uv run offline-maps                  # → http://127.0.0.1:5000
 ```
+
+## Waypoint decks
+
+A deck is any entry in `data/decks/`, in one of three forms:
+
+```
+<name>.parquet / .geojson / .json / .gpx / .gpkg    bare file of points
+<name>/                                             deck directory
+<name>.deck                                         zipped deck directory
+```
+
+A deck directory holds `points.parquet` plus optional pieces; a `.deck` file
+is an ordinary zip of the same layout (stored, not compressed — parquet and
+JPEG already are), so the viewer serves straight out of the archive and any
+zip tool can inspect one:
+
+```
+points.parquet      the point set (required)
+meta.parquet        per-point detail records, keyed by id (optional)
+deck.yaml           name / description / attribution / license (optional)
+photos/<id>.<ext>   full-resolution images for the lightbox (optional)
+thumbs/<id>.jpg     popup-sized thumbnails (optional)
+```
+
+Every deck is normalized on load — reprojected to WGS84, filtered to Point
+geometries, given a stable string `id` (from an `id` column, else `osm_id`,
+else the row number) that keys the photos and detail records.
+
+**Trading.** `offline-maps-pack data/decks/alpr` builds `alpr.deck` from a
+deck directory; `--photos none|thumbs|full` picks the size tier (the alpr
+deck: ~10 MB bare, ~60 MB with thumbnails, a few GB with full photos). Hand
+the file to someone, they drop it in `data/decks/`, done. Before slotting in
+a deck from someone else, `offline-maps-verify their.deck` reports on it:
+structural problems (path-traversing member names, zip-bomb ratios,
+unreadable data, files masquerading as images) are hard errors; URLs and
+HTML-looking text in values are surfaced for eyeballing — legitimate decks
+carry both as inert provenance data, and the viewer escapes everything and
+the CSP blocks all off-origin requests regardless.
+
+**Decks are data; recipes are code.** A deck never executes — the viewer
+treats everything in it as untrusted data. To share the *pipeline* that
+builds a deck rather than a snapshot of it, write a recipe: a single Python
+file with [PEP 723](https://peps.python.org/pep-0723/) inline metadata
+(`# /// script` declaring its dependencies) that fetches its source data and
+writes a deck. The recipient runs `uv run their-recipe.py` — deliberately,
+after a skim, the same trust model as any script — and gets a fresh deck
+instead of a stale one. The three `offline-maps-sync*` tools in this repo are
+the reference pipeline, maintaining `data/decks/alpr/` (config `sync.deck`).
 
 ## The basemap
 
@@ -73,36 +130,37 @@ builds; the script uses the newest live one unless you pin `BUILD=YYYYMMDD`.
 Use `--out` (or `OUT=…`) to write somewhere else, e.g. an external disk, and
 point `tiles.file` in `config.yaml` at wherever it lands.
 
-## ALPR data
+## The alpr deck
 
-The point layer mirrors DeFlock's worldwide dataset of ALPRs, which DeFlock
-regenerates hourly from OpenStreetMap and publishes as static JSON region
-tiles. `offline-maps-sync` fetches every region tile (~50 files, ~15 MB) and
-writes `data/points.parquet` (~120k points, ~3 MB). Each run takes a full
-snapshot and atomically overwrites the file — additions and deletions both
-just fall out — so it is idempotent; re-run any time to refresh.
+The reference deck mirrors DeFlock's worldwide dataset of ALPRs, which
+DeFlock regenerates hourly from OpenStreetMap and publishes as static JSON
+region tiles. `offline-maps-sync` fetches every region tile (~50 files,
+~15 MB) and writes the deck's `points.parquet` (~120k points, ~3 MB), seeding
+a `deck.yaml` with the ODbL attribution. Each run takes a full snapshot and
+atomically overwrites the file — additions and deletions both just fall out —
+so it is idempotent; re-run any time to refresh.
 
 ### Optional: full OSM metadata
 
 DeFlock's tiles carry only a 9-tag whitelist and no edit history.
 `offline-maps-sync-osm` pulls each node's complete OSM record — every tag,
-plus version / timestamp / changeset / user — into a sidecar GeoParquet
-(`data/points_meta.parquet`). It fetches the nodes already in `points.parquet`
-*by id* straight from Overpass (a direct lookup, no bbox harvest), so it stays
-fast where a global tag query would time out. The run is resumable — each
-batch appends to a JSONL checkpoint, so an interrupted or rate-limited run
-picks up where it left off — and `--limit N` does a quick partial run. The
-viewer reads the sidecar lazily to fill popups; everything works without it.
+plus version / timestamp / changeset / user — into the deck's sidecar
+(`meta.parquet`). It fetches the nodes already in `points.parquet` *by id*
+straight from Overpass (a direct lookup, no bbox harvest), so it stays fast
+where a global tag query would time out. The run is resumable — each batch
+appends to a JSONL checkpoint, so an interrupted or rate-limited run picks up
+where it left off — and `--limit N` does a quick partial run. The viewer
+reads the sidecar lazily to fill popups; everything works without it.
 
 ### Optional: local photo cache
 
 ~1,400 nodes reference a photo (`wikimedia_commons`, `image`/`photo` URLs,
 `mapillary`, `panoramax`) — all external links. `offline-maps-sync-photos`
-downloads one size-capped image per node into `data/photos/` (a few GB) and
-builds the JPEG thumbnails the popups embed, so the viewer serves photos from
-its own `/photos` and `/thumbs` routes and the map stays fully offline. It is
-resumable: an already-cached file is its own checkpoint, and dead links are
-recorded and skipped (`--retry-failed` to retry them). Mapillary's ~480
+downloads one size-capped image per node into the deck's `photos/` (a few
+GB) and builds the JPEG thumbnails the popups embed in `thumbs/`, so the
+viewer serves photos from its own routes and the map stays fully offline. It
+is resumable: an already-cached file is its own checkpoint, and dead links
+are recorded and skipped (`--retry-failed` to retry them). Mapillary's ~480
 photos need a free token — copy `.env.example` to `.env`, set
 `MAPILLARY_TOKEN`, and re-run; it fills in the rest.
 
@@ -128,10 +186,11 @@ scripts/
   build-style.mjs      regenerate the vendored MapLibre style JSON
 src/offline_maps/
   config.py            module-level settings loaded from config.yaml
-  points.py            in-memory GeoDataFrame + viewport bbox queries
-  meta.py              lazy per-node lookup into the enrichment sidecar
-  sync.py              offline-maps-sync         DeFlock region tiles → points.parquet
-  sync_osm.py          offline-maps-sync-osm     full OSM records → points_meta.parquet
+  decks.py             deck registry: scan, normalize, query, zip containers
+  pack.py              offline-maps-pack         deck directory → .deck file
+  verify.py            offline-maps-verify       inspect a received deck
+  sync.py              offline-maps-sync         DeFlock region tiles → the alpr deck
+  sync_osm.py          offline-maps-sync-osm     full OSM records → meta.parquet
   sync_photos.py       offline-maps-sync-photos  local photo cache + thumbnails
   web/
     app.py             Flask app + routes (entry point: offline-maps)
@@ -144,9 +203,8 @@ src/offline_maps/
       js/, css/        app code
 data/                  git-ignored, rebuildable artifacts
   basemap.pmtiles      scripts/fetch-tiles.sh
-  points.parquet       offline-maps-sync
-  points_meta.parquet  offline-maps-sync-osm (optional)
-  photos/              offline-maps-sync-photos (optional)
+  decks/               waypoint decks — anything dropped here is selectable
+    alpr/              the reference deck, maintained by the sync tools
 ```
 
 ## Licensing & attribution
@@ -154,11 +212,13 @@ data/                  git-ignored, rebuildable artifacts
 - Code in this repo: [MIT](LICENSE).
 - ALPR locations and tags come from OpenStreetMap — © OpenStreetMap
   contributors, [ODbL](https://www.openstreetmap.org/copyright) — via DeFlock,
-  the upstream cache the sync mirrors.
+  the upstream cache the sync mirrors. The deck's `deck.yaml` carries this
+  attribution, and packing keeps it in the `.deck`, so it travels with the
+  data; decks you build from other ODbL sources should do the same.
 - Basemap tiles are built by Protomaps from OpenStreetMap data (also ODbL).
 - Cached photos are variously licensed (Commons / Mapillary / Panoramax are
   CC; bare `image=` URLs are unknown) — fine as a local cache; attribute if
-  you redistribute them.
+  you redistribute them, including packing them into a deck you trade.
 - Vendored libraries and assets keep their own licenses: MapLibre GL JS
   (BSD-3), pmtiles.js (BSD-3), the Protomaps basemap theme (BSD-3), Noto Sans
   (OFL).
