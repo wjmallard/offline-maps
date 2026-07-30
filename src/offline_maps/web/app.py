@@ -19,6 +19,31 @@ app = Flask(__name__)
 
 _EMPTY_COLLECTION = '{"type": "FeatureCollection", "features": []}'
 
+# Same-origin-only CSP: the browser itself refuses any remote fetch, so "no
+# network requests at runtime" holds structurally — for every deck, even a
+# malicious one, and even if an escaping bug slips through. blob: covers
+# MapLibre's workers; data:/blob: cover the favicon and decoded images.
+# Violations POST to /csp-report so an attempted outlink leaves a log line.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data: blob:; "
+    "connect-src 'self'; "
+    "worker-src blob:; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'none'; "
+    "frame-ancestors 'none'; "
+    "report-uri /csp-report"
+)
+
+
+@app.after_request
+def add_csp(resp):
+    resp.headers["Content-Security-Policy"] = _CSP
+    return resp
+
 # Point ids land in filesystem globs and zip member lookups, so only a
 # conservative charset is ever accepted from the URL.
 _POINT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -28,8 +53,11 @@ _POINT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 def index():
     return render_template(
         "index.html",
-        center=config.DEFAULT_CENTER,
-        zoom=config.DEFAULT_ZOOM,
+        map_config={
+            "center": config.DEFAULT_CENTER,
+            "zoom": config.DEFAULT_ZOOM,
+            "styleUrl": "/static/styles/basemap.json",
+        },
     )
 
 
@@ -120,6 +148,14 @@ def _send_deck_image(result):
         return send_file(result, conditional=True)
     fileobj, filename = result
     return send_file(fileobj, download_name=filename)
+
+
+@app.route("/csp-report", methods=["POST"])
+def csp_report():
+    # The CSP's report-uri: any attempted off-origin request lands here, so a
+    # deck that tries to phone home leaves a visible log line.
+    app.logger.warning("CSP violation: %s", request.get_data(as_text=True))
+    return ("", 204)
 
 
 def main():

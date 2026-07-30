@@ -1,7 +1,8 @@
-// Offline MapLibre GL map: vendored PMTiles basemap + a viewport-queried
-// GeoParquet point layer (served as GeoJSON from /api/points).
+// Offline MapLibre GL map: vendored PMTiles basemap + swappable waypoint
+// decks (viewport queries served as GeoJSON from /api/decks/<id>/points).
 (function () {
-    const cfg = window.MAP_CONFIG;
+    // Server config rides in a JSON data block (inline script is barred by CSP).
+    const cfg = JSON.parse(document.getElementById("map-config").textContent);
 
     // Teach MapLibre to read the vendored single-file .pmtiles archive.
     const protocol = new pmtiles.Protocol();
@@ -158,6 +159,10 @@
                 .setLngLat(e.features[0].geometry.coordinates.slice())
                 .setHTML(cardHtml(props, deck))
                 .addTo(map);
+            // Drop the <img> when the deck has no image for this point (CSP
+            // bars the inline onerror attribute, so wire it up here).
+            const photoEl = popup.getElement()?.querySelector(".pp-photo");
+            if (photoEl) photoEl.addEventListener("error", () => photoEl.remove());
             if (!deck.has_meta || props.id == null) return;
             fetch(`/api/decks/${encodeURIComponent(currentDeck)}/point/${encodeURIComponent(props.id)}`)
                 .then((r) => (r.ok ? r.json() : null))
@@ -219,7 +224,7 @@
         const idUrl = props.id != null ? escapeHtml(encodeURIComponent(props.id)) : null;
         const photo = deck.has_photos && idUrl != null
             ? `<img class="pp-photo" src="/decks/${deckUrl}/thumbs/${idUrl}"`
-                + ` data-full="/decks/${deckUrl}/photos/${idUrl}" alt="" onerror="this.remove()">`
+                + ` data-full="/decks/${deckUrl}/photos/${idUrl}" alt="">`
             : "";
         const title = props.name
             ? `<div class="pp-title">${escapeHtml(props.name)}</div>`
