@@ -6,8 +6,9 @@ CDN (S3/R2). Each tile is a list of bare nodes:
 
     {"id": <int>, "lat": <float>, "lon": <float>, "tags": {<whitelisted subset>}}
 
-This tool fetches the tile index, fetches every listed tile, and writes one
-GeoParquet that the Flask viewer reads. It is idempotent: each run refetches the
+This tool fetches the tile index, fetches every listed tile, and writes the
+points.parquet of a viewer deck (data/decks/alpr by default, config sync.deck).
+It is idempotent: each run refetches the
 whole (small) set and atomically overwrites the output, so both new nodes and
 deletions simply fall out of a fresh snapshot. If the file is ever wrong, delete
 it and re-run.
@@ -99,8 +100,8 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=config.POINTS_PARQUET,
-        help="destination GeoParquet (default: the viewer's configured points file)",
+        default=config.SYNC_POINTS_PARQUET,
+        help="destination GeoParquet (default: the alpr deck's points.parquet)",
     )
     parser.add_argument(
         "--dry-run",

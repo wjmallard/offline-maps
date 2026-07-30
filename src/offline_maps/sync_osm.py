@@ -166,7 +166,7 @@ def main():
         "--output",
         type=Path,
         default=config.SYNC_OSM_OUTPUT,
-        help="destination sidecar GeoParquet (default: config sync.osm.output_path)",
+        help="destination sidecar GeoParquet (default: the alpr deck's meta.parquet)",
     )
     parser.add_argument(
         "--limit",
@@ -186,16 +186,16 @@ def main():
     )
     args = parser.parse_args()
 
-    if not config.POINTS_PARQUET.exists():
+    if not config.SYNC_POINTS_PARQUET.exists():
         parser.error(
-            f"{config.POINTS_PARQUET} not found — run offline-maps-sync first.",
+            f"{config.SYNC_POINTS_PARQUET} not found — run offline-maps-sync first.",
         )
 
     checkpoint_path = Path(f"{args.output}{_CHECKPOINT_SUFFIX}")
     if args.full:
         checkpoint_path.unlink(missing_ok=True)
 
-    osm_ids = load_osm_ids(config.POINTS_PARQUET, args.limit)
+    osm_ids = load_osm_ids(config.SYNC_POINTS_PARQUET, args.limit)
     print(f"Enriching {len(osm_ids):,} points from {config.SYNC_OSM_OVERPASS_URL} ...")
     try:
         elements = fetch_osm_records(osm_ids, config.SYNC_OSM_BATCH_SIZE, checkpoint_path)

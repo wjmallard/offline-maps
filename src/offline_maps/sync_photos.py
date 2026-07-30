@@ -1,12 +1,13 @@
 """Cache referenced photos locally so the offline viewer needs no network.
 
-`points_meta.parquet` (from offline-maps-sync-osm) carries external photo references:
+The deck's meta.parquet (from offline-maps-sync-osm) carries external photo references:
 `wikimedia_commons`, `image`/`photo` URLs, `mapillary` ids, and `panoramax` ids.
 Rendering those in the map would mean runtime network calls, breaking the offline
 guarantee. This tool resolves each reference to a real image and downloads a
-full-resolution copy to `data/photos/<osm_id>.<ext>`, then builds a downscaled JPEG
-thumbnail in `data/photos/thumbs/` for the map popups; the viewer serves both from its
-own `/photos` and `/thumbs` routes, so the browser only ever talks to the local server.
+full-resolution copy to the deck's `photos/<osm_id>.<ext>`, then builds a downscaled
+JPEG thumbnail in the deck's `thumbs/` for the map popups; the viewer serves both from
+its own `/photos` and `/thumbs` routes, so the browser only ever talks to the local
+server.
 
 One photo per node (best available, by source priority). Resumable: an already-cached
 file is its own checkpoint, and permanent failures (dead links, 404s) are recorded so
@@ -249,7 +250,13 @@ def main():
         "--dir",
         type=Path,
         default=config.SYNC_PHOTOS_DIR,
-        help="destination photo directory (default: config sync.photos.dir)",
+        help="destination photo directory (default: the alpr deck's photos/)",
+    )
+    parser.add_argument(
+        "--thumbs",
+        type=Path,
+        default=config.SYNC_PHOTOS_THUMBS_DIR,
+        help="destination thumbnail directory (default: the alpr deck's thumbs/)",
     )
     parser.add_argument(
         "--retry-failed",
@@ -269,7 +276,7 @@ def main():
     )
     args = parser.parse_args()
 
-    thumbs_dir = args.dir / "thumbs"
+    thumbs_dir = args.thumbs
 
     if not args.thumbs_only:
         if not args.meta.exists():

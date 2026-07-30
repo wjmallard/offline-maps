@@ -7,17 +7,8 @@ __pycache__/
 config.yaml
 .env
 
-# Vendored basemap data — large, fetched via scripts/ (see README)
-/data/*.pmtiles
-
-# Point-of-interest datasets
-/data/*.parquet
-
-# sync_osm checkpoint (transient)
-/data/*.partial.jsonl
-
-# Locally cached photos + thumbnails (offline-maps-sync-photos)
-/data/photos/
+# Local data — basemap, waypoint decks, caches; all rebuildable (see README)
+/data/
 
 # macOS
 .DS_Store

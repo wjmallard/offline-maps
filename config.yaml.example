@@ -8,31 +8,31 @@ map:
 tiles:
   file: data/basemap.pmtiles    # vendored basemap archive (git-ignored); served at /tiles/basemap.pmtiles
 
-points:
-  file: data/points.parquet     # GeoParquet source of truth (git-ignored); any CRS, reprojected to WGS84
+decks:
+  dir: data/decks               # waypoint decks (git-ignored): bare point files or deck directories
   max_features: 5000            # cap on points returned per viewport query
 
 sync:
-  # ALPR point source. DeFlock regenerates a worldwide set of static JSON region
+  # ALPR deck source. DeFlock regenerates a worldwide set of static JSON region
   # tiles hourly from OpenStreetMap and serves them from its CDN; `offline-maps-sync`
-  # mirrors those tiles into the points file above. OSM data is ODbL.
+  # mirrors those tiles into the deck directory below. OSM data is ODbL.
   regions_url: https://cdn.deflock.me/regions
+  deck: data/decks/alpr         # deck directory the ALPR pipeline maintains
 
   # Optional enrichment sidecar. `offline-maps-sync-osm` fetches full OSM tags and
   # edit metadata (by node id, straight from Overpass) for the points above and
-  # writes them to a separate GeoParquet. When present, the viewer reads it lazily
-  # to fill point popups with the full tag table and edit provenance.
+  # writes them to the deck's meta.parquet. When present, the viewer reads it
+  # lazily to fill point popups with the full tag table and edit provenance.
   osm:
     overpass_url: https://overpass-api.de/api/interpreter
     batch_size: 1000                # node ids per Overpass request
-    output_path: data/points_meta.parquet
 
   # Optional local photo cache. `offline-maps-sync-photos` downloads the images
   # referenced by the enriched tags (Commons / Mapillary / Panoramax / image URLs)
-  # into `dir`, so the viewer can serve them locally with no runtime network calls.
-  # Mapillary needs a free token in .env as MAPILLARY_TOKEN (see .env.example).
+  # into the deck's photos/ (thumbnails in thumbs/), so the viewer can serve them
+  # locally with no runtime network calls. Mapillary needs a free token in .env
+  # as MAPILLARY_TOKEN (see .env.example).
   photos:
-    dir: data/photos              # full-resolution cached images (thumbnails go in <dir>/thumbs)
     max_width: 1024               # download width for resizable sources (Commons/Mapillary/Panoramax)
     thumb_width: 512              # downscaled thumbnail width used in map popups
 

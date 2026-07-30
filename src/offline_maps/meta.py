@@ -1,6 +1,6 @@
-"""Lazy per-node lookup into the enriched OSM sidecar (points_meta.parquet).
+"""Lazy per-node lookup into the enriched OSM sidecar (the alpr deck's meta.parquet).
 
-The viewer serves the primary points from points.py; this reads a single enriched
+The viewer serves the primary points from decks.py; this reads a single enriched
 record on demand (a popup click) so the full tag set + edit metadata never has to be
 held in memory or shipped in the bbox response. Returns None when the sidecar is
 absent, so the viewer works with or without an enrichment run.
