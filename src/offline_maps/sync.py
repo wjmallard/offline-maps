@@ -44,6 +44,16 @@ TAG_COLUMNS = [
 
 _USER_AGENT = "offline-maps-alpr-sync/0.1 (personal use)"
 
+# Default deck.yaml, written once beside a deck-shaped output so the ODbL
+# attribution travels with the deck when it is packed and traded.
+_DECK_YAML = """\
+name: ALPR cameras
+description: Automated license-plate readers worldwide, as mapped in OpenStreetMap;
+  mirrored from DeFlock's hourly regenerated dataset.
+attribution: © OpenStreetMap contributors, via DeFlock (deflock.me)
+license: ODbL 1.0 — opendatacommons.org/licenses/odbl/
+"""
+
 
 def _get_json(url):
     request = urllib.request.Request(
@@ -93,6 +103,15 @@ def write_parquet(gdf, output_path):
     os.replace(tmp_path, output_path)
 
 
+def write_deck_yaml(points_path):
+    """Seed the deck's deck.yaml when the output is deck-shaped and has none yet."""
+    if points_path.name != "points.parquet":
+        return
+    path = points_path.parent / "deck.yaml"
+    if not path.exists():
+        path.write_text(_DECK_YAML)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Mirror DeFlock's ALPR region tiles into the points GeoParquet.",
@@ -119,6 +138,7 @@ def main():
         return
 
     write_parquet(gdf, args.output)
+    write_deck_yaml(Path(args.output))
     print(f"Wrote {len(gdf):,} points to {args.output}")
 
 

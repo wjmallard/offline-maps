@@ -21,6 +21,7 @@
     map.addControl(new maplibregl.ScaleControl());
 
     let currentDeck = null;
+    let deckInfo = {};
 
     setupLightbox();
     map.on("load", () => setupDecks(map));
@@ -36,6 +37,7 @@
             return;
         }
         if (!decks.length) return;
+        deckInfo = Object.fromEntries(decks.map((d) => [d.id, d]));
         const saved = localStorage.getItem("offline-maps.deck");
         currentDeck = decks.some((d) => d.id === saved) ? saved : decks[0].id;
         document.body.appendChild(deckPicker(map, decks));
@@ -56,6 +58,7 @@
             input.checked = deck.id === currentDeck;
             input.addEventListener("change", () => switchDeck(map, deck.id));
             const label = document.createElement("label");
+            if (deck.description) label.title = deck.description;
             label.appendChild(input);
             label.appendChild(document.createTextNode(deck.name));
             if (deck.count != null) {
@@ -146,16 +149,17 @@
                 });
         });
 
-        // Point click → deflock-style card: photo + operator/manufacturer, then the
-        // full OSM tags + edit provenance filled in lazily from /api/point/<id>.
+        // Point click → card from the point's own properties, then any detail
+        // record filled in lazily from the deck's meta.parquet.
         map.on("click", "unclustered-point", (e) => {
             const props = e.features[0].properties;
+            const deck = deckInfo[currentDeck] ?? {};
             const popup = new maplibregl.Popup({ maxWidth: "280px" })
                 .setLngLat(e.features[0].geometry.coordinates.slice())
-                .setHTML(cardHtml(props))
+                .setHTML(cardHtml(props, deck))
                 .addTo(map);
-            if (props.osm_id == null) return;
-            fetch(`/api/point/${encodeURIComponent(props.osm_id)}`)
+            if (!deck.has_meta || props.id == null) return;
+            fetch(`/api/decks/${encodeURIComponent(currentDeck)}/point/${encodeURIComponent(props.id)}`)
                 .then((r) => (r.ok ? r.json() : null))
                 .then((meta) => {
                     if (!meta) return;
@@ -207,14 +211,15 @@
         "surveillance:operator",
     ];
 
-    // Card built instantly from the point's own properties. Photos come from
-    // the local /thumbs route; onerror drops the <img> for points with no cached image.
+    // Card built instantly from the point's own properties. Photos come from the
+    // deck's thumbs route; onerror drops the <img> for points with no cached image.
     // Point properties are untrusted data: escape for HTML, URL-encode for URLs.
-    function cardHtml(props) {
-        const id = props.osm_id;
-        const idUrl = id != null ? escapeHtml(encodeURIComponent(id)) : null;
-        const photo = id != null
-            ? `<img class="pp-photo" src="/thumbs/${idUrl}" data-full="/photos/${idUrl}" alt="" onerror="this.remove()">`
+    function cardHtml(props, deck) {
+        const deckUrl = escapeHtml(encodeURIComponent(currentDeck));
+        const idUrl = props.id != null ? escapeHtml(encodeURIComponent(props.id)) : null;
+        const photo = deck.has_photos && idUrl != null
+            ? `<img class="pp-photo" src="/decks/${deckUrl}/thumbs/${idUrl}"`
+                + ` data-full="/decks/${deckUrl}/photos/${idUrl}" alt="" onerror="this.remove()">`
             : "";
         const title = props.name
             ? `<div class="pp-title">${escapeHtml(props.name)}</div>`
@@ -231,24 +236,35 @@
                 rows.push(field(key, value));
             }
         }
-        const osm = id != null
-            ? `<div class="pp-osm">www.openstreetmap.org/node/${escapeHtml(id)}</div>`
+        const osm = props.osm_id != null
+            ? `<div class="pp-osm">www.openstreetmap.org/node/${escapeHtml(props.osm_id)}</div>`
             : "";
         return `<div class="pp">${photo}${title}<div class="pp-rows">${rows.join("")}</div>`
             + `<div class="pp-details"></div><div class="pp-foot">${osm}</div></div>`;
     }
 
-    // Enriched section (full OSM tags + edit provenance) fetched from /api/point/<id>.
+    // Detail section fetched from the deck's meta.parquet: OSM-style edit
+    // provenance and tag table when those fields exist, other fields as rows.
+    const META_KEYS = ["changeset", "id", "osm_id", "osm_timestamp", "tags", "uid", "user", "version"];
+
     function detailsHtml(meta) {
-        const when = meta.osm_timestamp ? meta.osm_timestamp.slice(0, 10) : "?";
-        const by = meta.user ? " by " + escapeHtml(meta.user) : "";
-        const prov = `<div class="pp-prov">Last edited ${escapeHtml(when)}${by} · v${escapeHtml(meta.version)}</div>`;
+        const parts = [];
+        if (meta.osm_timestamp || meta.version != null) {
+            const when = meta.osm_timestamp ? meta.osm_timestamp.slice(0, 10) : "?";
+            const by = meta.user ? " by " + escapeHtml(meta.user) : "";
+            const version = meta.version != null ? ` · v${escapeHtml(meta.version)}` : "";
+            parts.push(`<div class="pp-prov">Last edited ${escapeHtml(when)}${by}${version}</div>`);
+        }
         const tags = meta.tags || {};
         const n = Object.keys(tags).length;
-        const tagList = n
-            ? `<details class="pp-tags"><summary>All ${n} OSM tags</summary>${propsTable(tags)}</details>`
-            : "";
-        return prov + tagList;
+        if (n) {
+            parts.push(`<details class="pp-tags"><summary>All ${n} OSM tags</summary>${propsTable(tags)}</details>`);
+        }
+        const extras = Object.fromEntries(
+            Object.entries(meta).filter(([k, v]) => !META_KEYS.includes(k) && v != null),
+        );
+        if (Object.keys(extras).length) parts.push(propsTable(extras));
+        return parts.join("");
     }
 
     function field(label, value) {
@@ -270,10 +286,10 @@
 
     function propsTable(props) {
         const rows = Object.entries(props)
-            .map(
-                ([k, v]) =>
-                    `<tr><td class="k">${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`,
-            )
+            .map(([k, v]) => {
+                const value = typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
+                return `<tr><td class="k">${escapeHtml(k)}</td><td>${escapeHtml(value)}</td></tr>`;
+            })
             .join("");
         return `<table class="props">${rows}</table>`;
     }
@@ -293,7 +309,9 @@
     }
 
     // Fullscreen lightbox: click a popup thumbnail to view the full-size photo;
-    // click the backdrop or press Escape to dismiss it.
+    // click the backdrop or press Escape to dismiss it. Decks packed at the
+    // thumbs tier have no full-size photos, so a failed load falls back to
+    // showing the thumbnail itself.
     function setupLightbox() {
         const lightbox = document.createElement("div");
         lightbox.className = "lightbox";
@@ -301,7 +319,8 @@
         document.body.appendChild(lightbox);
         const img = lightbox.querySelector(".lightbox-img");
 
-        const open = (src) => {
+        const open = (src, fallback) => {
+            img.dataset.fallback = fallback ?? "";
             img.src = src;
             lightbox.classList.add("open");
         };
@@ -309,11 +328,16 @@
             lightbox.classList.remove("open");
             img.removeAttribute("src");
         };
+        img.addEventListener("error", () => {
+            if (img.dataset.fallback && img.src !== img.dataset.fallback) {
+                img.src = img.dataset.fallback;
+            }
+        });
 
         document.addEventListener("click", (e) => {
             const thumb = e.target.closest(".pp-photo");
             if (thumb && thumb.dataset.full) {
-                open(thumb.dataset.full);
+                open(thumb.dataset.full, thumb.src);
             } else if (e.target === lightbox || e.target.closest(".lightbox-close")) {
                 close();
             }

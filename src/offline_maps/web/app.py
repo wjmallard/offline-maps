@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 from flask import (
     Flask,
     Response,
@@ -10,12 +13,15 @@ from flask import (
 from offline_maps import (
     config,
     decks,
-    meta,
 )
 
 app = Flask(__name__)
 
 _EMPTY_COLLECTION = '{"type": "FeatureCollection", "features": []}'
+
+# Point ids land in filesystem globs and zip member lookups, so only a
+# conservative charset is ever accepted from the URL.
+_POINT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 @app.route("/")
@@ -37,50 +43,25 @@ def tiles(filename):
     return send_file(config.TILES_PATH, conditional=True)
 
 
-@app.route("/photos/<int:osm_id>")
-def photos(osm_id):
-    # Locally cached ALPR photos (offline-maps-sync-photos) — keeps the map offline.
-    match = next(
-        (p for p in config.SYNC_PHOTOS_DIR.glob(f"{osm_id}.*") if p.suffix != ".tmp"),
-        None,
-    )
-    if match is None:
-        abort(404)
-    return send_file(match, conditional=True)
-
-
-@app.route("/thumbs/<int:osm_id>")
-def thumb(osm_id):
-    # Downscaled thumbnail for map popups (offline-maps-sync-photos builds these).
-    path = config.SYNC_PHOTOS_THUMBS_DIR / f"{osm_id}.jpg"
-    if not path.exists():
-        abort(404)
-    return send_file(path, conditional=True)
-
-
 @app.route("/api/decks")
 def api_decks():
-    return {
-        "decks": [
-            {
-                "id": deck.id,
-                "name": deck.name,
-                "count": deck.count,
-            }
-            for deck in decks.list_decks()
-        ],
-    }
+    entries = []
+    for deck in decks.list_decks():
+        entry = {
+            "id": deck.id,
+            "name": deck.name,
+            "count": deck.count,
+            "has_meta": deck.has_meta,
+            "has_photos": deck.has_photos,
+        }
+        entry.update({k: v for k, v in deck.info.items() if k != "name"})
+        entries.append(entry)
+    return {"decks": entries}
 
 
 @app.route("/api/decks/<deck_id>/points")
 def api_deck_points(deck_id):
-    deck = decks.get_deck(deck_id)
-    if deck is None:
-        abort(404)
-    return _points_response(deck)
-
-
-def _points_response(deck):
+    deck = _deck_or_404(deck_id)
     bbox = request.args.get("bbox")
     if not bbox:
         return Response(_EMPTY_COLLECTION, mimetype="application/json")
@@ -93,14 +74,52 @@ def _points_response(deck):
     return resp
 
 
-@app.route("/api/point/<int:osm_id>")
-def api_point(osm_id):
-    # Enriched OSM record (full tags + edit metadata) for one node, read lazily
-    # from the sidecar parquet on popup click. 404 when the sidecar is absent.
-    record = meta.point_meta(osm_id)
+@app.route("/api/decks/<deck_id>/point/<point_id>")
+def api_deck_point(deck_id, point_id):
+    # One point's detail record from the deck's meta.parquet, read lazily on
+    # popup click. 404 when the deck carries no meta or the id is unknown.
+    deck = _deck_or_404(deck_id)
+    record = deck.meta_record(_point_id_or_404(point_id))
     if record is None:
         abort(404)
     return record
+
+
+@app.route("/decks/<deck_id>/photos/<point_id>")
+def deck_photo(deck_id, point_id):
+    # Full-resolution image for the lightbox, from the deck's photos/.
+    deck = _deck_or_404(deck_id)
+    return _send_deck_image(deck.photo(_point_id_or_404(point_id)))
+
+
+@app.route("/decks/<deck_id>/thumbs/<point_id>")
+def deck_thumb(deck_id, point_id):
+    # Popup-sized thumbnail from the deck's thumbs/.
+    deck = _deck_or_404(deck_id)
+    return _send_deck_image(deck.thumb(_point_id_or_404(point_id)))
+
+
+def _deck_or_404(deck_id):
+    deck = decks.get_deck(deck_id)
+    if deck is None:
+        abort(404)
+    return deck
+
+
+def _point_id_or_404(point_id):
+    if not _POINT_ID.match(point_id):
+        abort(404)
+    return point_id
+
+
+def _send_deck_image(result):
+    # DirDecks hand back a real file path; ZipDecks a lazily-streamed zip member.
+    if result is None:
+        abort(404)
+    if isinstance(result, Path):
+        return send_file(result, conditional=True)
+    fileobj, filename = result
+    return send_file(fileobj, download_name=filename)
 
 
 def main():
